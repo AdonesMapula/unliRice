@@ -1,0 +1,563 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { signOut, createUserWithEmailAndPassword } from 'firebase/auth';
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  serverTimestamp,
+  query,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
+import { auth, db } from '../firebase/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  LayoutDashboard,
+  UserPlus,
+  Users,
+  Car,
+  Shield,
+  LogOut,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
+
+function computeLicenseStatus(expiry) {
+  if (!expiry) return 'expired';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(expiry);
+  exp.setHours(0, 0, 0, 0);
+  return exp >= today ? 'valid' : 'expired';
+}
+
+const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'officer', label: 'Create Officer', icon: Shield },
+  { id: 'user', label: 'Register User (Driver)', icon: Users },
+  { id: 'owner', label: 'Register Vehicle Owner', icon: Car },
+];
+
+export default function AdminDashboard() {
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [counts, setCounts] = useState({
+    drivers: 0,
+    officers: 0,
+    vehicleOwners: 0,
+    vehicles: 0,
+    scanLogs: 0,
+    trafficStops: 0,
+  });
+  const [recentStops, setRecentStops] = useState([]);
+  const [loadingCounts, setLoadingCounts] = useState(true);
+  const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
+  const [error, setError] = useState('');
+
+  // Create Officer form
+  const [officerFullName, setOfficerFullName] = useState('');
+  const [officerEmail, setOfficerEmail] = useState('');
+  const [officerPassword, setOfficerPassword] = useState('');
+  const [officerBadge, setOfficerBadge] = useState('');
+  const [officerStation, setOfficerStation] = useState('');
+  const [officerSubmitting, setOfficerSubmitting] = useState(false);
+
+  // Register User (Driver) form
+  const [driverFullName, setDriverFullName] = useState('');
+  const [driverEmail, setDriverEmail] = useState('');
+  const [driverLicense, setDriverLicense] = useState('');
+  const [driverExpiry, setDriverExpiry] = useState('');
+  const [driverSubmitting, setDriverSubmitting] = useState(false);
+
+  // Register Owner form
+  const [ownerFullName, setOwnerFullName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [ownerCompany, setOwnerCompany] = useState('');
+  const [ownerSubmitting, setOwnerSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (successMessage && location.state?.message) {
+      window.history.replaceState({}, '', '/admin');
+    }
+  }, [successMessage, location.state]);
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      setLoadingCounts(true);
+      try {
+        const [drivers, officers, vehicleOwners, vehicles, scanLogs, trafficStops] = await Promise.all([
+          getDocs(collection(db, 'drivers')).then((s) => s.size),
+          getDocs(collection(db, 'officers')).then((s) => s.size),
+          getDocs(collection(db, 'vehicleOwners')).then((s) => s.size),
+          getDocs(collection(db, 'vehicles')).then((s) => s.size),
+          getDocs(collection(db, 'scanLogs')).then((s) => s.size),
+          getDocs(collection(db, 'trafficStops')).then((s) => s.size),
+        ]);
+        setCounts({ drivers, officers, vehicleOwners, vehicles, scanLogs, trafficStops });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingCounts(false);
+      }
+    };
+    fetchCounts();
+  }, []);
+
+  useEffect(() => {
+    const fetchRecentStops = async () => {
+      try {
+        const q = query(
+          collection(db, 'trafficStops'),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        );
+        const snap = await getDocs(q);
+        setRecentStops(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchRecentStops();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/login');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const createOfficer = async (e) => {
+    e.preventDefault();
+    setError('');
+    setOfficerSubmitting(true);
+    try {
+      const email = officerEmail.trim().toLowerCase();
+      const cred = await createUserWithEmailAndPassword(auth, email, officerPassword);
+      await setDoc(doc(db, 'officers', cred.user.uid), {
+        id: cred.user.uid,
+        fullName: officerFullName.trim(),
+        badgeNumber: officerBadge.trim(),
+        role: 'Traffic Officer',
+        station: officerStation.trim(),
+        createdAt: serverTimestamp(),
+      });
+      await signOut(auth);
+      navigate('/login', { state: { message: 'Officer account created. Please sign in again as admin.' } });
+    } catch (err) {
+      setError(err.message || 'Failed to create officer.');
+    } finally {
+      setOfficerSubmitting(false);
+    }
+  };
+
+  const createDriver = async (e) => {
+    e.preventDefault();
+    setError('');
+    const last6 = driverLicense.replace(/\D/g, '').slice(-6);
+    if (last6.length < 6) {
+      setError('License number must have at least 6 digits for default password.');
+      return;
+    }
+    setDriverSubmitting(true);
+    try {
+      const email = driverEmail.trim().toLowerCase();
+      const defaultPassword = last6;
+      const cred = await createUserWithEmailAndPassword(auth, email, defaultPassword);
+      const status = computeLicenseStatus(driverExpiry);
+      await setDoc(doc(db, 'drivers', cred.user.uid), {
+        id: cred.user.uid,
+        fullName: driverFullName.trim(),
+        licenseNumber: driverLicense.trim().toUpperCase(),
+        licenseExpiry: driverExpiry,
+        licenseStatus: status,
+        isFirstLogin: true,
+        createdAt: serverTimestamp(),
+      });
+      await signOut(auth);
+      navigate('/login', {
+        state: {
+          message: `Driver "${driverFullName}" created. Default password: last 6 digits of license. Please sign in again as admin.`,
+        },
+      });
+    } catch (err) {
+      setError(err.message || 'Failed to register driver.');
+    } finally {
+      setDriverSubmitting(false);
+    }
+  };
+
+  const createOwner = async (e) => {
+    e.preventDefault();
+    setError('');
+    setOwnerSubmitting(true);
+    try {
+      const email = ownerEmail.trim().toLowerCase();
+      const cred = await createUserWithEmailAndPassword(auth, email, ownerPassword);
+      await setDoc(doc(db, 'vehicleOwners', cred.user.uid), {
+        id: cred.user.uid,
+        fullName: ownerFullName.trim(),
+        email: email,
+        companyName: ownerCompany.trim() || null,
+        createdAt: serverTimestamp(),
+      });
+      await signOut(auth);
+      navigate('/login', { state: { message: 'Vehicle owner account created. Please sign in again as admin.' } });
+    } catch (err) {
+      setError(err.message || 'Failed to register vehicle owner.');
+    } finally {
+      setOwnerSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-50 flex">
+      {/* Sidebar */}
+      <aside className="w-56 flex-shrink-0 bg-slate-900/80 border-r border-slate-700 flex flex-col">
+        <div className="p-4 border-b border-slate-700">
+          <h1 className="font-black text-lg tracking-tight">Admin</h1>
+          <p className="text-slate-400 text-xs mt-1">LTMS Control Panel</p>
+        </div>
+        <nav className="p-2 flex-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => { setActiveTab(tab.id); setError(''); setSuccessMessage(''); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+              }`}
+            >
+              <tab.icon size={18} />
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-2 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-slate-100 text-sm font-medium"
+          >
+            <LogOut size={18} />
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 overflow-auto p-6 md:p-8">
+        {successMessage && (
+          <div className="mb-6 flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-200 px-4 py-3 text-sm">
+            <CheckCircle2 size={20} />
+            {successMessage}
+          </div>
+        )}
+        {error && (
+          <div className="mb-6 flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 text-sm">
+            <AlertCircle size={20} />
+            {error}
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
+            {loadingCounts ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-600 border-t-blue-500" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+                  {[
+                    { label: 'Drivers', value: counts.drivers, color: 'blue' },
+                    { label: 'Officers', value: counts.officers, color: 'emerald' },
+                    { label: 'Vehicle Owners', value: counts.vehicleOwners, color: 'amber' },
+                    { label: 'Vehicles', value: counts.vehicles, color: 'violet' },
+                    { label: 'Scan Logs', value: counts.scanLogs, color: 'slate' },
+                    { label: 'Traffic Stops', value: counts.trafficStops, color: 'rose' },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className={`rounded-2xl border bg-slate-900/60 border-slate-700 p-4 ${
+                        item.color === 'blue' ? 'border-blue-500/40' : ''
+                      } ${item.color === 'emerald' ? 'border-emerald-500/40' : ''} ${
+                        item.color === 'amber' ? 'border-amber-500/40' : ''
+                      } ${item.color === 'violet' ? 'border-violet-500/40' : ''} ${
+                        item.color === 'rose' ? 'border-rose-500/40' : ''
+                      }`}
+                    >
+                      <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">{item.label}</p>
+                      <p className="text-2xl font-black mt-1">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6">
+                  <h3 className="font-semibold mb-4">Recent Traffic Stops</h3>
+                  {recentStops.length === 0 ? (
+                    <p className="text-slate-400 text-sm">No traffic stops recorded yet.</p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {recentStops.map((stop) => (
+                        <li
+                          key={stop.id}
+                          className="flex flex-wrap items-center gap-2 text-sm py-2 border-b border-slate-700 last:border-0"
+                        >
+                          <span className="font-mono text-slate-300">{stop.plateNumber}</span>
+                          <span className="text-slate-400">•</span>
+                          <span>{stop.driverName}</span>
+                          <span className="text-slate-400">•</span>
+                          <span
+                            className={`font-semibold uppercase ${
+                              stop.overallStatus === 'VALID' ? 'text-emerald-400' : 'text-red-400'
+                            }`}
+                          >
+                            {stop.overallStatus}
+                          </span>
+                          {stop.checkpointAddress && (
+                            <>
+                              <span className="text-slate-400">@</span>
+                              <span className="text-slate-400">{stop.checkpointAddress}</span>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'officer' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Create Officer Account</h2>
+            <form onSubmit={createOfficer} className="max-w-md space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={officerFullName}
+                  onChange={(e) => setOfficerFullName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Email (@ltms.gov.ph)
+                </label>
+                <input
+                  type="email"
+                  value={officerEmail}
+                  onChange={(e) => setOfficerEmail(e.target.value)}
+                  placeholder="officer@ltms.gov.ph"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={officerPassword}
+                  onChange={(e) => setOfficerPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Badge Number
+                </label>
+                <input
+                  type="text"
+                  value={officerBadge}
+                  onChange={(e) => setOfficerBadge(e.target.value)}
+                  placeholder="LTMS-OPS-0423"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Station
+                </label>
+                <input
+                  type="text"
+                  value={officerStation}
+                  onChange={(e) => setOfficerStation(e.target.value)}
+                  placeholder="Cebu City Checkpoint A"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={officerSubmitting}
+                className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold disabled:opacity-60"
+              >
+                {officerSubmitting ? 'Creating…' : 'Create Officer'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'user' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Register User (Driver)</h2>
+            <p className="text-slate-400 text-sm mb-4">
+              Driver will get default password: last 6 digits of license number. They can change it on first login.
+            </p>
+            <form onSubmit={createDriver} className="max-w-md space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={driverFullName}
+                  onChange={(e) => {
+                    setDriverFullName(e.target.value);
+                    if (!driverEmail) {
+                      const base = e.target.value.replace(/\s+/g, '').toLowerCase();
+                      if (base) setDriverEmail(`${base}@fake.ltms.com`);
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Email (e.g. FirstnameLastname@fake.ltms.com)
+                </label>
+                <input
+                  type="email"
+                  value={driverEmail}
+                  onChange={(e) => setDriverEmail(e.target.value)}
+                  placeholder="juan.delacruz@fake.ltms.com"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  License Number
+                </label>
+                <input
+                  type="text"
+                  value={driverLicense}
+                  onChange={(e) => setDriverLicense(e.target.value.toUpperCase())}
+                  placeholder="D22-33-445566"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none font-mono"
+                  required
+                />
+                <p className="text-slate-500 text-xs mt-1">Last 6 digits will be used as default password.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  License Expiry
+                </label>
+                <input
+                  type="date"
+                  value={driverExpiry}
+                  onChange={(e) => setDriverExpiry(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={driverSubmitting}
+                className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold disabled:opacity-60"
+              >
+                {driverSubmitting ? 'Registering…' : 'Register Driver'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'owner' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Register Vehicle Rental Owner</h2>
+            <form onSubmit={createOwner} className="max-w-md space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={ownerFullName}
+                  onChange={(e) => setOwnerFullName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(e) => setOwnerEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={ownerPassword}
+                  onChange={(e) => setOwnerPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Company Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={ownerCompany}
+                  onChange={(e) => setOwnerCompany(e.target.value)}
+                  placeholder="e.g. Rent-A-Car Co."
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={ownerSubmitting}
+                className="w-full py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold disabled:opacity-60"
+              >
+                {ownerSubmitting ? 'Registering…' : 'Register Vehicle Owner'}
+              </button>
+            </form>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

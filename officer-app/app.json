@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "LTMS Officer",
+    "slug": "ltms-officer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "ltms-officer",
+    "splash": { "backgroundColor": "#0f172a" },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow LTMS Officer to access your camera to scan driver QR codes."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ltms.officer"
+    },
+    "android": {
+      "package": "com.ltms.officer",
+      "permissions": ["android.permission.CAMERA"]
+    }
+  }
+}
