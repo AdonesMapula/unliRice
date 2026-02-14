@@ -1,4 +1,5 @@
 // src/firebase/firestore.js
+// Document structure and collection names match scripts/seed-firebase.cjs (valicheck-21c70).
 import { db } from './firebase';
 import {
   doc,
@@ -13,6 +14,9 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 
+/** Normalize plate for Firestore doc IDs: uppercase, no spaces (matches seed: ABC8248) */
+export const normalizePlate = (plate) => String(plate || '').replace(/\s/g, '').toUpperCase();
+
 // Get single document
 export const getDriver = async (uid) => {
   const driverRef = doc(db, 'drivers', uid);
@@ -21,7 +25,8 @@ export const getDriver = async (uid) => {
 };
 
 export const getVehicle = async (plateNumber) => {
-  const vehicleRef = doc(db, 'vehicles', plateNumber.toUpperCase());
+  const plate = normalizePlate(plateNumber);
+  const vehicleRef = doc(db, 'vehicles', plate);
   const snap = await getDoc(vehicleRef);
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
@@ -32,7 +37,7 @@ export const logScan = async (officerId, driverId, plateNumber, result) => {
     await addDoc(collection(db, 'scanLogs'), {
       officerId,
       driverId,
-      plateNumber: plateNumber.toUpperCase(),
+      plateNumber: normalizePlate(plateNumber),
       result,
       timestamp: serverTimestamp(),
       createdAt: new Date().toISOString(),

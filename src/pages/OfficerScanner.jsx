@@ -80,7 +80,7 @@ export default function OfficerScanner() {
         if (res) {
           try {
             const data = JSON.parse(res.getText());
-            verifyDriverAndVehicle(data.uid, plateNumber.trim().toUpperCase());
+            verifyDriverAndVehicle(data.uid, plateNumber.replace(/\s/g, '').toUpperCase());
             setScanning(false);
             codeReader.reset();
           } catch (e) {
@@ -315,7 +315,7 @@ export default function OfficerScanner() {
                   <input
                     type="text"
                     value={plateNumber}
-                    onChange={(e) => setPlateNumber(e.target.value.toUpperCase())}
+                    onChange={(e) => setPlateNumber(e.target.value.toUpperCase().replace(/\s/g, ''))}
                     placeholder="NCA 1234"
                     className="w-full p-3.5 bg-slate-950/70 border border-slate-600 rounded-xl focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40 text-slate-50 placeholder:text-slate-500 outline-none transition-all font-mono tracking-wide"
                   />

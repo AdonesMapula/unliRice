@@ -7,7 +7,9 @@
  * 2. Save as firebase-admin.json in project root (or set GOOGLE_APPLICATION_CREDENTIALS)
  * 3. Run: node scripts/seed-firebase.cjs
  *
- * Uses the project from your service account JSON (same as your Firebase app).
+ * Uses the project from your service account JSON. It MUST be the same project
+ * as the web/officer app (valicheck-21c70, see src/firebase/config.js) so data
+ * and linking work. Download the key from that project in Firebase Console.
  */
 
 const admin = require('firebase-admin');
@@ -85,8 +87,12 @@ function initAdmin() {
   }
 
   const key = require(keyPath);
+  const expectedProject = 'valicheck-21c70';
   if (key.project_id) {
     console.log('Using project:', key.project_id);
+    if (key.project_id !== expectedProject) {
+      console.warn('Warning: App config uses project', expectedProject + '. Use that project\'s service account so data matches.');
+    }
   }
   if (!admin.apps.length) {
     admin.initializeApp({ credential: admin.credential.cert(key) });

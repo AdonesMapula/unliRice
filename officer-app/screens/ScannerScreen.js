@@ -96,7 +96,7 @@ export default function ScannerScreen() {
         const uid = parsed.uid;
         if (uid) {
           setScanning(false);
-          verifyDriverAndVehicle(uid, plateNumber.trim().toUpperCase());
+          verifyDriverAndVehicle(uid, plateNumber.replace(/\s/g, '').toUpperCase());
         }
       } catch {
         setError('Invalid QR format');
@@ -234,8 +234,8 @@ export default function ScannerScreen() {
       <Text style={styles.label}>Vehicle plate number</Text>
       <TextInput
         style={styles.input}
-        value={plateNumber}
-        onChangeText={(t) => setPlateNumber(t.toUpperCase())}
+value={plateNumber}
+                  onChangeText={(t) => setPlateNumber(t.toUpperCase().replace(/\s/g, ''))}
         placeholder="e.g. NCA 1234"
         placeholderTextColor="#64748b"
         autoCapitalize="characters"

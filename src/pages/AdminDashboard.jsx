@@ -57,6 +57,7 @@ export default function AdminDashboard() {
   });
   const [recentStops, setRecentStops] = useState([]);
   const [loadingCounts, setLoadingCounts] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
   const [error, setError] = useState('');
 
@@ -108,6 +109,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchCounts = async () => {
       setLoadingCounts(true);
+      setFetchError('');
       try {
         const [drivers, officers, vehicleOwners, vehicles, scanLogs, trafficStops] = await Promise.all([
           getDocs(collection(db, 'drivers')).then((s) => s.size),
@@ -119,7 +121,8 @@ export default function AdminDashboard() {
         ]);
         setCounts({ drivers, officers, vehicleOwners, vehicles, scanLogs, trafficStops });
       } catch (err) {
-        console.error(err);
+        console.error('Admin fetch counts failed:', err);
+        setFetchError(err.message || 'Failed to load dashboard data. Check Firebase project and Firestore rules.');
       } finally {
         setLoadingCounts(false);
       }
@@ -138,7 +141,18 @@ export default function AdminDashboard() {
         const snap = await getDocs(q);
         setRecentStops(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
-        console.error(err);
+        try {
+          const snap = await getDocs(collection(db, 'trafficStops'));
+          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          docs.sort((a, b) => {
+            const ta = a.createdAt?.toMillis?.() ?? (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const tb = b.createdAt?.toMillis?.() ?? (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return (tb || 0) - (ta || 0);
+          });
+          setRecentStops(docs.slice(0, 5));
+        } catch (e) {
+          console.error('Fetch recent stops failed:', e);
+        }
       }
     };
     fetchRecentStops();
@@ -152,19 +166,26 @@ export default function AdminDashboard() {
           getDocs(collection(db, 'drivers')),
           getDocs(collection(db, 'vehicleOwners')),
         ]);
-        const drivers = driversSnap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().fullName || d.data().email || d.id,
-          type: 'driver',
-        }));
-        const owners = ownersSnap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().fullName || d.data().companyName || d.data().email || d.id,
-          type: 'owner',
-        }));
+        const drivers = driversSnap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: data.fullName || data.email || d.id,
+            type: 'driver',
+          };
+        });
+        const owners = ownersSnap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: data.fullName || data.companyName || data.email || d.id,
+            type: 'owner',
+          };
+        });
         setOwnerOptions([...drivers, ...owners]);
       } catch (err) {
-        console.error(err);
+        console.error('Fetch owners failed:', err);
+        setError(err.message || 'Failed to load drivers/owners for vehicle registration.');
       }
     };
     fetchOwners();
@@ -265,7 +286,7 @@ export default function AdminDashboard() {
   const registerVehicle = async (e) => {
     e.preventDefault();
     setError('');
-    const plate = vehiclePlateNo.trim().toUpperCase();
+    const plate = vehiclePlateNo.replace(/\s/g, '').toUpperCase();
     if (!plate) {
       setError('Plate No. is required.');
       return;
@@ -378,6 +399,13 @@ export default function AdminDashboard() {
         {activeTab === 'dashboard' && (
           <div>
             <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
+            {fetchError && (
+              <div className="mb-6 flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-200 px-4 py-3 text-sm">
+                <AlertCircle size={20} />
+                {fetchError}
+                <span className="text-amber-300/80 text-xs block mt-1">Ensure you are using the Firebase project that contains your data and that Firestore rules allow read.</span>
+              </div>
+            )}
             {loadingCounts ? (
               <div className="flex justify-center py-12">
                 <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-600 border-t-blue-500" />

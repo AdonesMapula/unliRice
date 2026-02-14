@@ -183,13 +183,19 @@ export default function DriverDashboard() {
                       <p>
                         <span className="text-slate-400">Ownership:&nbsp;</span>
                         <span className="font-semibold">
-                          {vehicle.ownershipType || 'OWNED'}
+                          OWNED
                         </span>
                       </p>
-                      {vehicle.model && (
+                      {(vehicle.brand || vehicle.series) && (
                         <p>
-                          <span className="text-slate-400">Model:&nbsp;</span>
-                          <span className="font-medium">{vehicle.model}</span>
+                          <span className="text-slate-400">Vehicle:&nbsp;</span>
+                          <span className="font-medium">{[vehicle.brand, vehicle.series].filter(Boolean).join(' ')}</span>
+                        </p>
+                      )}
+                      {vehicle.vehicleCategory && (
+                        <p>
+                          <span className="text-slate-400">Category:&nbsp;</span>
+                          <span className="font-medium">{vehicle.vehicleCategory}</span>
                         </p>
                       )}
                     </div>

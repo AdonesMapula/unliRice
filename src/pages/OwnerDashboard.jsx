@@ -104,7 +104,7 @@ export default function OwnerDashboard() {
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     setAddError('');
-    const plate = plateNumber.trim().toUpperCase();
+    const plate = plateNumber.replace(/\s/g, '').toUpperCase();
     if (!plate) return;
     setAddSubmitting(true);
     try {
@@ -185,9 +185,10 @@ export default function OwnerDashboard() {
     if (!selectedVehiclePlate) return;
     setAuthorizeSubmitting(true);
     try {
-      const authId = `${selectedVehiclePlate}_${driverUid}`;
+      const plate = selectedVehiclePlate.replace(/\s/g, '').toUpperCase();
+      const authId = `${plate}_${driverUid}`;
       await setDoc(doc(db, 'authorizations', authId), {
-        plateNumber: selectedVehiclePlate,
+        plateNumber: plate,
         driverUid,
         driverName,
         status: 'ACTIVE',
@@ -302,7 +303,7 @@ export default function OwnerDashboard() {
                   <input
                     type="text"
                     value={plateNumber}
-                    onChange={(e) => setPlateNumber(e.target.value.toUpperCase())}
+                    onChange={(e) => setPlateNumber(e.target.value.toUpperCase().replace(/\s/g, ''))}
                     placeholder="ABC 1234"
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-50 font-mono"
                     required
@@ -372,7 +373,7 @@ export default function OwnerDashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-mono font-semibold text-lg">{vehicle.plateNumber}</p>
                     <p className="text-slate-400 text-sm">
-                      {vehicle.model || '—'} • {vehicle.vehicleType || 'Vehicle'}
+                      {[vehicle.brand, vehicle.series].filter(Boolean).join(' ') || '—'} • {vehicle.vehicleType || 'Vehicle'}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

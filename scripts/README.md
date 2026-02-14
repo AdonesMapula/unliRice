@@ -11,8 +11,8 @@ Populates your Firebase project (Auth + Firestore) with random officers, drivers
 
    Do **not** commit this file. It is listed in `.gitignore` (e.g. `src/seeding/firebase-admin.json` or `firebase-admin.json`).
 
-2. **Project ID**  
-   The script uses the project ID from your app (`valicheck-21c70`). If your app uses a different project, edit `PROJECT_ID` in `scripts/seed-firebase.cjs`.
+2. **Same project as the app**  
+   Use the service account key for the **same** Firebase project as your web and officer app (`valicheck-21c70`, see `src/firebase/config.js`). Otherwise seeded data will not show in the app and linking will break.
 
 ## Run
 
