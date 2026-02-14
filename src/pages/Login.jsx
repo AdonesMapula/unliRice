@@ -4,6 +4,8 @@ import { auth, db } from '../firebase/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Lock, Mail, AlertCircle, Info } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { CODE_ADMIN_USERNAME, CODE_ADMIN_PASSWORD } from '../config/credentials';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -13,18 +15,37 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { setCodeAdminUser } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    const usernameOrEmail = email.trim();
+    const usernameLower = usernameOrEmail.toLowerCase();
+
+    // Code-based admin (no database): credentials stored in config
+    const isCodeAdminUsername =
+      usernameLower === CODE_ADMIN_USERNAME.toLowerCase() || usernameLower === 'ltoadmin@ltms.gov.ph';
+    if (isCodeAdminUsername && password === CODE_ADMIN_PASSWORD) {
+      setCodeAdminUser();
+      navigate('/admin');
+      setLoading(false);
+      return;
+    }
+
     try {
-      let normalizedEmail = email.trim().toLowerCase();
-      // Default admin: username LTOAdmin → LTOAdmin@ltms.gov.ph
-      if (normalizedEmail === 'ltoadmin') {
+      // Normalize to full email: accept input with or without @
+      let normalizedEmail = usernameLower;
+      if (!normalizedEmail.includes('@')) {
+        normalizedEmail = normalizedEmail === 'ltoadmin'
+          ? 'ltoadmin@ltms.gov.ph'
+          : `${normalizedEmail}@fake.ltms.com`;
+      } else if (normalizedEmail === 'ltoadmin@ltms.gov.ph') {
         normalizedEmail = 'ltoadmin@ltms.gov.ph';
       }
+
       const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const uid = userCredential.user.uid;
 
@@ -108,17 +129,17 @@ export default function Login() {
                     <Mail size={18} />
                   </span>
                   <input
-                    type="email"
+                    type="text" // switched to text so typing without '@' isn't blocked by browser
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-12 pr-4 py-3.5 bg-slate-900/60 border border-slate-600/80 rounded-xl focus:border-blue-400 focus:ring-2 focus:ring-blue-500/40 text-slate-50 placeholder:text-slate-500 outline-none transition-all font-mono tracking-wide"
-                    placeholder="Email or LTOAdmin for admin"
+                    placeholder="Email (you can omit the @domain) or LTOAdmin"
                     required
                     autoComplete="email"
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
-                  Use the email provided by your administrator.
+                  Use the email provided by your administrator; domain is added automatically if you leave it off.
                 </p>
               </div>
 
