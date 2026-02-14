@@ -73,6 +73,7 @@ export default function AdminDashboard() {
   const [driverFullName, setDriverFullName] = useState('');
   const [driverEmail, setDriverEmail] = useState('');
   const [driverLicense, setDriverLicense] = useState('');
+  const [driverPassword, setDriverPassword] = useState('');
   const [driverExpiry, setDriverExpiry] = useState('');
   const [driverSubmitting, setDriverSubmitting] = useState(false);
 
@@ -227,16 +228,15 @@ export default function AdminDashboard() {
   const createDriver = async (e) => {
     e.preventDefault();
     setError('');
-    const last6 = driverLicense.replace(/\D/g, '').slice(-6);
-    if (last6.length < 6) {
-      setError('License number must have at least 6 digits for default password.');
+    const password = driverPassword.trim() || driverLicense.replace(/\D/g, '').slice(-6);
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters (auto-filled from last 6 digits of license, or enter manually).');
       return;
     }
     setDriverSubmitting(true);
     try {
       const email = driverEmail.trim().toLowerCase();
-      const defaultPassword = last6;
-      const cred = await createUserWithEmailAndPassword(auth, email, defaultPassword);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
       const status = computeLicenseStatus(driverExpiry);
       await setDoc(doc(db, 'drivers', cred.user.uid), {
         id: cred.user.uid,
@@ -250,7 +250,7 @@ export default function AdminDashboard() {
       await firebaseSignOut(auth);
       navigate('/login', {
         state: {
-          message: `Driver "${driverFullName}" created. Default password: last 6 digits of license. Please sign in again as admin.`,
+          message: `Driver "${driverFullName}" created. Password: as set in form. Please sign in again as admin.`,
         },
       });
     } catch (err) {
@@ -557,7 +557,7 @@ export default function AdminDashboard() {
           <div>
             <h2 className="text-2xl font-bold mb-6">Register User (Driver)</h2>
             <p className="text-slate-400 text-sm mb-4">
-              Driver will get default password: last 6 digits of license number. They can change it on first login.
+              Enter the license number and the password field will auto-fill with the last 6 digits. You can edit the password. Driver can change it on first login.
             </p>
             <form onSubmit={createDriver} className="max-w-md space-y-4">
               <div>
@@ -598,12 +598,31 @@ export default function AdminDashboard() {
                 <input
                   type="text"
                   value={driverLicense}
-                  onChange={(e) => setDriverLicense(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase();
+                    setDriverLicense(val);
+                    const last6 = val.replace(/\D/g, '').slice(-6);
+                    if (last6) setDriverPassword(last6);
+                  }}
                   placeholder="D22-33-445566"
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none font-mono"
                   required
                 />
-                <p className="text-slate-500 text-xs mt-1">Last 6 digits will be used as default password.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Password (auto-filled from last 6 digits of license)
+                </label>
+                <input
+                  type="text"
+                  value={driverPassword}
+                  onChange={(e) => setDriverPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-slate-50 focus:border-blue-500 outline-none font-mono"
+                  required
+                  minLength={6}
+                />
+                <p className="text-slate-500 text-xs mt-1">Auto-populated when you enter the license number. You can edit if needed.</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
